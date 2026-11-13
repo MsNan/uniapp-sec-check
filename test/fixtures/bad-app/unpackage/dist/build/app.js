@@ -1,0 +1,1 @@
+var appSecret = 'FAKE_SECRET_IN_UNPACKAGE_BUILD'

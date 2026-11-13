@@ -1,0 +1,11 @@
+{
+  "name": "clean-app",
+  "mp-weixin": {
+    "appid": "wxFAKEAPPID000000",
+    "setting": { "urlCheck": true },
+    "permission": {
+      "scope.userLocation": { "desc": "用于展示附近门店" }
+    },
+    "requiredPrivateInfos": ["getLocation"]
+  }
+}

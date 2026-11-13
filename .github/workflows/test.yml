@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Test
+        run: npm test
+      - name: CLI clean sample exits 0
+        run: node bin/cli.js test/fixtures/clean-app
+      - name: CLI bad sample exits 1
+        run: |
+          set +e
+          node bin/cli.js test/fixtures/bad-app --json > /dev/null
+          code=$?
+          test "$code" -eq 1

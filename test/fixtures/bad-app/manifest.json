@@ -1,0 +1,19 @@
+{
+  // uni-app 的 manifest 允许注释
+  "name": "bad-app",
+  "appid": "__UNI__FAKE000",
+  "h5": {
+    "devServer": { "proxy": { "/api": { "target": "https://example.com" } } }
+  },
+  /* mp-weixin 故意写错的配置 */
+  "mp-weixin": {
+    "appid": "",
+    "__usePrivacyCheck__": true,
+    "setting": { "urlCheck": false, "es6": true },
+    "permission": {
+      "scope.userLocation": {},
+      "scope.userFuzzyLocation": { "desc": "你的大概位置会用来推荐附近的门店和活动以及计算配送费用和预计送达时间" }
+    },
+    "requiredPrivateInfos": ["chooseAddress", "getFoo"],
+  },
+}
