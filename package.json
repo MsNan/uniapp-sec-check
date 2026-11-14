@@ -1,7 +1,7 @@
 {
   "name": "uniapp-sec-check",
-  "version": "0.1.0",
-  "description": "uni-app / 微信小程序上线前安全自查：密钥硬编码、明文 http、manifest 权限与 requiredPrivateInfos、隐私接口、调试残留。离线、零依赖、确定性规则，附 Claude/Cursor 技能",
+  "version": "0.2.0",
+  "description": "uni-app / 微信小程序上线前安全自查：密钥硬编码、明文 http、manifest 权限与 requiredPrivateInfos、pages.json / 分包结构、隐私接口、调试残留。离线、零依赖、确定性规则，附 Claude/Cursor 技能",
   "main": "lib/scan.js",
   "bin": {
     "uniapp-sec-check": "bin/cli.js"

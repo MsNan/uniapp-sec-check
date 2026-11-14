@@ -210,3 +210,288 @@ test('src/manifest.json 布局：代码类规则只看 src/，密钥规则仍扫
   assert.deepEqual(sec.map((f) => f.file), ['server/index.js']);
   assert.match(sec[0].message, /不在小程序源码目录/);
 });
+
+function uniBase(extra = {}) {
+  return Object.assign({
+    'manifest.json': '{ "mp-weixin": { "appid": "wxFAKEAPPID000000" } }',
+    'pages/index/index.vue': '<template><view>ok</view></template>',
+  }, extra);
+}
+
+test('PAG001：uni-app 缺 pages.json 警告；无 manifest 且无 pages/app.json 不报 PAG001', () => {
+  const dir = tmpProject({ 'manifest.json': '{ "mp-weixin": { "appid": "wxFAKEAPPID000000" } }' });
+  const miss = find(scan(dir), 'PAG001');
+  assert.equal(miss.length, 1);
+  assert.equal(miss[0].severity, 'warn');
+  const r = scan(path.join(FX, 'no-manifest'));
+  assert.equal(find(r, 'PAG001').length, 0);
+  assert.equal(find(r, 'MAN001').length, 1);
+});
+
+test('PAG001：pages.json 非法 JSONC 报错', () => {
+  const dir = tmpProject(uniBase({ 'pages.json': '{ pages: [ }' }));
+  const f = find(scan(dir), 'PAG001');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].severity, 'error');
+  assert.equal(f[0].file, 'pages.json');
+});
+
+test('PAG002：pages 缺失或空数组或非法项报错', () => {
+  const missing = tmpProject(uniBase({ 'pages.json': '{ }' }));
+  assert.equal(find(scan(missing), 'PAG002').length, 1);
+  const empty = tmpProject(uniBase({ 'pages.json': '{ "pages": [] }' }));
+  assert.equal(find(scan(empty), 'PAG002').length, 1);
+  const badItem = tmpProject(uniBase({ 'pages.json': '{ "pages": [123, { "path": "" }] }' }));
+  assert.ok(find(scan(badItem), 'PAG002').length >= 2);
+});
+
+test('PAG003：配置了页面但没有对应文件报错；存在 .nvue 则通过', () => {
+  const miss = tmpProject(uniBase({
+    'pages.json': '{ "pages": ["pages/index/index", "pages/gone/gone"] }',
+  }));
+  const f = find(scan(miss), 'PAG003');
+  assert.equal(f.length, 1);
+  assert.match(f[0].message, /pages\/gone\/gone/);
+  const nvue = tmpProject(uniBase({
+    'pages.json': '{ "pages": ["pages/n/n"] }',
+    'pages/n/n.nvue': '<template><view>n</view></template>',
+  }));
+  const r = scan(nvue);
+  assert.equal(find(r, 'PAG003').length, 0);
+  assert.equal(find(r, 'PAG002').length, 0);
+});
+
+test('PAG004：主包与分包出现同一路径报错', () => {
+  const dir = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }, { path: 'pagesA/list/list' }],
+      subPackages: [{ root: 'pagesA', pages: [{ path: 'list/list' }] }],
+    }),
+    'pagesA/list/list.vue': '<template><view>l</view></template>',
+  }));
+  const f = find(scan(dir), 'PAG004');
+  assert.equal(f.length, 1);
+  assert.match(f[0].message, /pagesA\/list\/list/);
+});
+
+test('PAG006：分包路径写成全路径或带 root 前缀报错；相对路径通过', () => {
+  const bad = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [{ root: 'pagesA', pages: ['pagesA/list/list'] }],
+    }),
+    'pagesA/list/list.vue': '<template><view>l</view></template>',
+  }));
+  const f = find(scan(bad), 'PAG006');
+  assert.equal(f.length, 1);
+  assert.match(f[0].message, /相对路径，不是全路径/);
+  const ok = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [{ root: 'pagesA', pages: ['list/list'] }],
+    }),
+    'pagesA/list/list.vue': '<template><view>l</view></template>',
+  }));
+  const r = scan(ok);
+  assert.equal(find(r, 'PAG006').length, 0);
+  assert.equal(find(r, 'PAG003').length, 0);
+});
+
+test('PAG007：根目录嵌套或 name 重复报错；package 与 packageA 不算嵌套', () => {
+  const nested = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [
+        { root: 'pkg', pages: ['a/a'] },
+        { root: 'pkg/sub', pages: ['b/b'] },
+      ],
+    }),
+    'pkg/a/a.vue': '<template><view>a</view></template>',
+    'pkg/sub/b/b.vue': '<template><view>b</view></template>',
+  }));
+  const n = find(scan(nested), 'PAG007');
+  assert.equal(n.length, 1);
+  assert.match(n[0].message, /根目录不能是另外一个 subPackages 内的子目录/);
+  const ok = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [
+        { root: 'package', pages: ['a/a'] },
+        { root: 'packageA', pages: ['b/b'] },
+      ],
+    }),
+    'package/a/a.vue': '<template><view>a</view></template>',
+    'packageA/b/b.vue': '<template><view>b</view></template>',
+  }));
+  assert.equal(find(scan(ok), 'PAG007').length, 0);
+  const dupName = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [
+        { root: 'pkgA', name: 'same', pages: ['a/a'] },
+        { root: 'pkgB', name: 'same', pages: ['b/b'] },
+      ],
+    }),
+    'pkgA/a/a.vue': '<template><view>a</view></template>',
+    'pkgB/b/b.vue': '<template><view>b</view></template>',
+  }));
+  const d = find(scan(dupName), 'PAG007');
+  assert.equal(d.length, 1);
+  assert.match(d[0].message, /same/);
+});
+
+test('PAG008：tabBar 页面只在分包时报错；在主包则通过', () => {
+  const files = {
+    'pages/home/home.vue': '<template><view>h</view></template>',
+    'pagesA/list/list.vue': '<template><view>l</view></template>',
+  };
+  const bad = tmpProject(uniBase(Object.assign({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }, { path: 'pages/home/home' }],
+      subPackages: [{ root: 'pagesA', pages: ['list/list'] }],
+      tabBar: { list: [{ pagePath: 'pages/index/index', text: '首页' }, { pagePath: 'pagesA/list/list', text: '列表' }] },
+    }),
+  }, files)));
+  const f = find(scan(bad), 'PAG008');
+  assert.equal(f.length, 1);
+  assert.match(f[0].message, /必须在主包内/);
+  const ok = tmpProject(uniBase(Object.assign({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }, { path: 'pages/home/home' }],
+      subPackages: [{ root: 'pagesA', pages: ['list/list'] }],
+      tabBar: { list: [{ pagePath: 'pages/index/index', text: '首页' }, { pagePath: 'pages/home/home', text: '我的' }] },
+    }),
+  }, files)));
+  const r = scan(ok);
+  assert.equal(find(r, 'PAG008').length, 0);
+  assert.equal(find(r, 'PAG009').length, 0);
+});
+
+test('PAG009：tabBar.list 长度为 1 或 6 报错；2 个通过', () => {
+  const twoPages = {
+    'pages/home/home.vue': '<template><view>h</view></template>',
+  };
+  const one = tmpProject(uniBase(Object.assign({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      tabBar: { list: [{ pagePath: 'pages/index/index', text: '首页' }] },
+    }),
+  }, twoPages)));
+  assert.equal(find(scan(one), 'PAG009').length, 1);
+  const paths = ['pages/index/index', 'pages/home/home', 'pages/c/c', 'pages/d/d', 'pages/e/e', 'pages/f/f'];
+  const extra = {};
+  for (const pth of paths.slice(1)) extra[pth + '.vue'] = '<template><view>x</view></template>';
+  const six = tmpProject(uniBase(Object.assign({
+    'pages.json': JSON.stringify({
+      pages: paths,
+      tabBar: { list: paths.map((p) => ({ pagePath: p, text: p })) },
+    }),
+  }, extra)));
+  assert.equal(find(scan(six), 'PAG009').length, 1);
+  const two = tmpProject(uniBase(Object.assign({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }, { path: 'pages/home/home' }],
+      tabBar: { list: [{ pagePath: 'pages/index/index', text: '首页' }, { pagePath: 'pages/home/home', text: '我的' }] },
+    }),
+  }, twoPages)));
+  assert.equal(find(scan(two), 'PAG009').length, 0);
+});
+
+test('PAG010/PAG011/PAG012：preloadRule 未知页面、未知分包、非法 network 报错；合法配置沉默', () => {
+  const bad = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [{ root: 'pagesA', name: 'pkgA', pages: ['list/list'] }],
+      preloadRule: {
+        'pages/no-such/no-such': { packages: ['no-such'], network: '4g' },
+      },
+    }),
+    'pagesA/list/list.vue': '<template><view>l</view></template>',
+  }));
+  const r = scan(bad);
+  assert.equal(find(r, 'PAG010').length, 1);
+  assert.equal(find(r, 'PAG011').length, 1);
+  assert.equal(find(r, 'PAG012').length, 1);
+  const ok = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [{ root: 'pagesA', name: 'pkgA', pages: ['list/list'] }],
+      preloadRule: {
+        'pages/index/index': { packages: ['__APP__', 'pagesA'], network: 'all' },
+        'pagesA/list/list': { packages: ['pkgA'], network: 'wifi' },
+      },
+    }),
+    'pagesA/list/list.vue': '<template><view>l</view></template>',
+  }));
+  const s = scan(ok);
+  assert.equal(find(s, 'PAG010').length, 0);
+  assert.equal(find(s, 'PAG011').length, 0);
+  assert.equal(find(s, 'PAG012').length, 0);
+});
+
+test('src/ 布局：pages.json 与页面文件按配置文件所在目录解析', () => {
+  const clean = scan(path.join(FX, 'clean-app'));
+  assert.equal(find(clean, 'PAG001').length, 0);
+  assert.equal(find(clean, 'PAG002').length, 0);
+  assert.equal(find(clean, 'PAG003').length, 0);
+  const dir = tmpProject({
+    'src/manifest.json': '{ "mp-weixin": { "appid": "wxFAKEAPPID000000" } }',
+    'src/pages.json': '{ "pages": [{ "path": "pages/index/index" }] }',
+    'src/pages/index/index.vue': '<template><view>ok</view></template>',
+  });
+  const r = scan(dir);
+  assert.equal(r.summary.error, 0);
+  assert.equal(find(r, 'PAG003').length, 0);
+});
+
+test('原生 app.json 字符串 pages 可用，无 manifest 时不报 PAG001', () => {
+  const dir = tmpProject({
+    'app.json': JSON.stringify({ pages: ['pages/index/index'] }),
+    'pages/index/index.js': 'Page({})',
+  });
+  const r = scan(dir);
+  assert.equal(find(r, 'PAG001').length, 0);
+  assert.equal(find(r, 'PAG002').length, 0);
+  assert.equal(find(r, 'PAG003').length, 0);
+  assert.equal(find(r, 'MAN001')[0].severity, 'warn');
+});
+
+test('subpackages 小写别名可用；同时存在两个字段时警告并采用 subPackages', () => {
+  const lower = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subpackages: [{ root: 'pagesA', pages: ['list/list'] }],
+    }),
+    'pagesA/list/list.vue': '<template><view>l</view></template>',
+  }));
+  const a = scan(lower);
+  assert.equal(find(a, 'PAG001').length, 0);
+  assert.equal(find(a, 'PAG005').length, 0);
+  assert.equal(find(a, 'PAG006').length, 0);
+  assert.equal(find(a, 'PAG003').length, 0);
+  const both = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [{ root: 'pagesA', pages: ['list/list'] }],
+      subpackages: [{ root: 'pagesB', pages: ['x/x'] }],
+    }),
+    'pagesA/list/list.vue': '<template><view>l</view></template>',
+  }));
+  const b = scan(both);
+  const w = find(b, 'PAG001');
+  assert.equal(w.length, 1);
+  assert.equal(w[0].severity, 'warn');
+  // 采用 subPackages，不会去解析 pagesB（也就不会因缺文件报 PAG003）
+  assert.equal(find(b, 'PAG003').length, 0);
+});
+
+test('PAG005：分包缺少 root 或 pages 不是数组报错', () => {
+  const dir = tmpProject(uniBase({
+    'pages.json': JSON.stringify({
+      pages: [{ path: 'pages/index/index' }],
+      subPackages: [{ pages: ['a/a'] }, { root: 'pagesA', pages: 'list/list' }],
+    }),
+  }));
+  const f = find(scan(dir), 'PAG005');
+  assert.equal(f.length, 2);
+});

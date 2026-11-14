@@ -4,7 +4,7 @@
 [![npx](https://img.shields.io/badge/npx-github%3AMsNan%2Funiapp--sec--check-green)](https://github.com/MsNan/uniapp-sec-check)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-**uni-app / 微信小程序上线前安全自查**：一条命令扫出「AppSecret / 支付密钥写进前端」「请求地址还是 http」「requiredPrivateInfos 没声明」「permission 缺用途说明」「隐私接口要去后台声明」「vConsole / setEnableDebug 没关」这类上线前最容易漏的问题。
+**uni-app / 微信小程序上线前安全自查**：一条命令扫出「AppSecret / 支付密钥写进前端」「请求地址还是 http」「requiredPrivateInfos 没声明」「permission 缺用途说明」「pages.json / 分包配错（tabBar 写进分包、路径写成全路径、分包嵌套）」「隐私接口要去后台声明」「vConsole / setEnableDebug 没关」这类上线前最容易漏的问题。
 
 - 离线、零依赖、只用确定性规则（正则 + JSON 解析），不联网、不上传代码、不调用 AI
 - 每条规则都对应微信 / 微信支付 / DCloud 官方文档（`--rules` 查看），没有官方依据的只标为「工程卫生」
@@ -83,6 +83,18 @@ npx -y github:MsNan/uniapp-sec-check --rules
 | DBG001 | 警告/提示 | `console.log/debug` 计数（vite 配了 drop console 时降为提示） | 工程卫生 |
 | DBG002 | 警告 | 引入 vConsole / eruda，或放在 dependencies | 工程卫生 |
 | DBG003 | 错误 | `setEnableDebug({ enableDebug: true })` | [wx.setEnableDebug](https://developers.weixin.qq.com/miniprogram/dev/api/base/debug/wx.setEnableDebug.html)：对正式版也生效 |
+| PAG001 | 警告/错误 | 找不到 pages.json（与 manifest 同目录）或原生 app.json（警告）；文件存在但 JSONC 解析失败（错误）。同时写了 subPackages 和 subpackages 时警告并采用 subPackages。无 manifest 且无 pages/app.json 时跳过（不与 MAN001 叠报） | [uni-app pages.json](https://uniapp.dcloud.net.cn/collocation/pages.html)、[微信·全局配置](https://developers.weixin.qq.com/miniprogram/dev/reference/configuration/app.html) |
+| PAG002 | 错误 | `pages` 缺失、不是非空数组，或某项既不是非空字符串也不是带非空 `path` 的对象 | uni-app pages.json：pages 必填，第一项是首页 |
+| PAG003 | 错误 | 配置了页面但找不到对应的 `.vue` / `.nvue` / `.uvue` / `.js` / `.ts` 文件（路径相对 pages.json / app.json 所在目录） | uni-app pages.json：「文件名不需要写后缀」 |
+| PAG004 | 错误 | 归一化后同一完整路径在主包、某一分包、或主包与分包之间重复出现 | uni-app pages.json、[微信·分包](https://developers.weixin.qq.com/miniprogram/dev/framework/subpackages/basic.html) |
+| PAG005 | 错误 | 某个分包缺少非空 `root`，或 `pages` 不是数组 | 微信·分包、uni-app pages.json |
+| PAG006 | 错误 | 分包页面路径以 `/` 开头，或带上了该包自己的 `root` 前缀（例如 root 为 `pagesA` 却写成 `pagesA/list/list`） | uni-app pages.json：「subPackages 里的 pages 的路径是 root 下的相对路径，不是全路径」 |
+| PAG007 | 错误 | 两个分包 `root` 相同或一个是另一个的目录前缀（`package` 与 `packageA` 不算）；或两个分包共用同一个非空 `name` | 微信·分包：「subPackages 的根目录不能是另外一个 subPackages 内的子目录」 |
+| PAG008 | 错误 | `tabBar.list[].pagePath` 不在主包 `pages` 中（只在分包里也报错） | 微信·分包：「tabBar 页面必须在主包内」；uni-app pages.json：pagePath「必须在 pages 中先定义」 |
+| PAG009 | 错误 | 存在 `tabBar` 但 `list` 缺失、不是数组，或数量不在 2–5 | uni-app pages.json、微信·全局配置：最少 2 个、最多 5 个 |
+| PAG010 | 错误 | `preloadRule` 的 key 不是已配置的页面完整路径 | [微信·分包预下载](https://developers.weixin.qq.com/miniprogram/dev/framework/subpackages/preload.html) |
+| PAG011 | 错误 | `packages` 缺失或不是数组，或其中的项不是已知分包 `root` / `name` / `__APP__` | 同上 |
+| PAG012 | 错误 | `network` 存在但不是 `all` 或 `wifi` | 同上：可选 all / wifi，默认 wifi |
 
 **扫描范围**：默认跳过 `node_modules`、`unpackage`、`dist`、`.git`、`.hbuilderx`、`uni_modules`。密钥 / 证书 / `.env` 规则扫整个项目；http、调试、隐私和定位接口这类「代码规则」只看 manifest 所在目录（`src/manifest.json` 布局就只看 `src/`），同仓库里的 `server/`、`scripts/` 不算进小程序包。
 

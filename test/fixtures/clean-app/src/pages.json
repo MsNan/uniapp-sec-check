@@ -1,0 +1,6 @@
+{
+  // uni-app 的 pages.json 允许注释
+  "pages": [
+    { "path": "pages/index/index" }
+  ]
+}

@@ -1,12 +1,12 @@
 ---
 name: uniapp-sec-check
-description: uni-app / 微信小程序上线前安全自查。用户准备提审、发版、上线，或问「有没有把密钥写进前端 / http 能不能用 / requiredPrivateInfos / 隐私接口声明」时使用：运行离线确定性检查器并按结果逐条修复。
+description: uni-app / 微信小程序上线前安全自查。用户准备提审、发版、上线，或问「有没有把密钥写进前端 / http 能不能用 / requiredPrivateInfos / 隐私接口声明 / pages.json 分包 tabBar」时使用：运行离线确定性检查器并按结果逐条修复。
 ---
 # uni-app / 微信小程序上线前安全自查
 
 ## 什么时候用
 - 准备上传代码、提交审核、发正式版之前
-- 用户问 AppSecret / 支付密钥放哪、为什么真机请求失败、地理位置接口报未声明、隐私接口报 errno 112
+- 用户问 AppSecret / 支付密钥放哪、为什么真机请求失败、地理位置接口报未声明、隐私接口报 errno 112、tabBar 或分包路径配错
 
 ## 步骤
 1. 在项目根目录（有 `manifest.json` 或 `src/manifest.json`）运行：
@@ -26,6 +26,7 @@ description: uni-app / 微信小程序上线前安全自查。用户准备提审
 - **MAN003/MAN004/MAN006**：在 `manifest.json` 的 `mp-weixin` 下补 `permission` 的 `desc`（≤30 字）和 `requiredPrivateInfos`，并提醒用户去小程序后台「开发管理-接口设置」开通对应接口。
 - **PRV001**：不改代码，提醒用户在小程序后台《用户隐私保护指引》里勾选对应信息类型。
 - **DBG001/DBG002/DBG003**：调试代码只在开发环境加载；console 可用构建配置移除。
+- **PAG001–PAG012（pages.json / 分包）**：补齐或修正 `pages.json`（或原生 `app.json`）。`pages` 必填且第一项为首页，路径不写后缀并确保对应 `.vue` / `.nvue` / `.uvue` / `.js` / `.ts` 文件存在；分包 `pages` 写 `root` 下的相对路径、`root` 不能互相嵌套或共用同一个 `name`；`tabBar` 页面必须在主包且 `list` 为 2–5 项；`preloadRule` 的 key 必须是已配置页面，`packages` 只能是分包 root / name 或 `__APP__`，`network` 只能是 `all` 或 `wifi`。
 
 ## 不要做
 - 不要为了让检查通过而用 `--disable` 关掉错误类规则，除非用户明确同意。
